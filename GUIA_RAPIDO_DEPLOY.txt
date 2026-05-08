@@ -1,0 +1,190 @@
+╔════════════════════════════════════════════════════════════════════╗
+║                  🚀 GUIA RÁPIDO - DEPLOY RENDER                    ║
+║                Monitor de Notícias Flask + Render Free              ║
+╚════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 📋 CHECKLIST PRÉ-DEPLOY                                            │
+└────────────────────────────────────────────────────────────────────┘
+
+□ Conta no GitHub criada
+□ Conta no Render.com criada (gratuita)
+□ Git instalado no seu computador
+□ Todos os arquivos baixados:
+  ├── app.py
+  ├── monitor_multi_sites.py
+  ├── requirements.txt
+  ├── render.yaml
+  ├── .gitignore
+  └── templates/primeira_execucao.html
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🎯 PASSO 1: PREPARAR REPOSITÓRIO GIT                              │
+└────────────────────────────────────────────────────────────────────┘
+
+# 1.1 Criar pasta do projeto
+mkdir monitor-noticias-web
+cd monitor-noticias-web
+
+# 1.2 Copiar TODOS os arquivos acima para esta pasta
+
+# 1.3 Inicializar Git
+git init
+git add .
+git commit -m "Deploy monitor de notícias"
+
+# 1.4 Criar repo no GitHub
+# Vá em: https://github.com/new
+# Nome: monitor-noticias-web
+# Visibilidade: Público ou Privado (tanto faz)
+# NÃO marque "Add README"
+
+# 1.5 Fazer push
+git remote add origin https://github.com/SEU_USUARIO/monitor-noticias-web.git
+git branch -M main
+git push -u origin main
+
+✅ Repositório criado!
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🌐 PASSO 2: DEPLOY NO RENDER                                       │
+└────────────────────────────────────────────────────────────────────┘
+
+1. Acesse: https://render.com
+2. Faça login/cadastro (use conta GitHub)
+3. Clique em: "New +" → "Web Service"
+4. Conecte seu repositório GitHub
+5. Selecione: monitor-noticias-web
+6. Configurações (auto-detectadas):
+   
+   ┌─────────────────────────────────────┐
+   │ Name:          monitor-noticias     │
+   │ Environment:   Python               │
+   │ Branch:        main                 │
+   │ Build Command: pip install -r...    │
+   │ Start Command: gunicorn app:app     │
+   └─────────────────────────────────────┘
+
+7. Clique em: "Create Web Service"
+8. AGUARDE ~5 minutos (acompanhe nos logs)
+
+✅ Deploy concluído!
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🎉 PASSO 3: ACESSAR SUA APLICAÇÃO                                 │
+└────────────────────────────────────────────────────────────────────┘
+
+Sua URL será algo como:
+https://monitor-noticias-xxxxx.onrender.com
+
+Endpoints disponíveis:
+├── /                         → Página principal (relatório HTML)
+├── /api/status              → Status JSON
+├── /api/noticias/metropoles → Notícias Metrópoles JSON
+├── /api/noticias/correio    → Notícias Correio JSON
+├── /logs                    → Logs do sistema
+└── /health                  → Health check
+
+┌────────────────────────────────────────────────────────────────────┐
+│ ⚡ IMPORTANTE: EVITAR SPIN DOWN (HIBERNAÇÃO)                       │
+└────────────────────────────────────────────────────────────────────┘
+
+Render free hiberna após 15 min sem uso. Solução:
+
+1. Cadastre em: https://uptimerobot.com (grátis)
+2. Crie novo monitor:
+   • Type: HTTP(s)
+   • URL: https://seu-app.onrender.com/health
+   • Interval: 10 minutes
+3. Salve
+
+✅ App ficará sempre ativo!
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🧪 TESTAR LOCALMENTE (OPCIONAL)                                   │
+└────────────────────────────────────────────────────────────────────┘
+
+# Instalar dependências
+pip install -r requirements.txt
+
+# Executar app
+python app.py
+
+# Testar endpoints
+python testar_app.py
+
+# Acessar navegador
+http://localhost:5000
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🔧 ATUALIZAÇÕES FUTURAS                                           │
+└────────────────────────────────────────────────────────────────────┘
+
+Quando fizer mudanças no código:
+
+git add .
+git commit -m "Descrição da mudança"
+git push
+
+→ Render detecta e faz redeploy automaticamente!
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 📊 MONITORAMENTO                                                   │
+└────────────────────────────────────────────────────────────────────┘
+
+Ver logs:
+• No Render: Dashboard → Seu serviço → Logs
+• Na web: https://seu-app.onrender.com/logs
+
+Ver status:
+• https://seu-app.onrender.com/api/status
+
+Forçar atualização:
+• https://seu-app.onrender.com/api/forcar-atualizacao
+
+┌────────────────────────────────────────────────────────────────────┐
+│ ❓ PROBLEMAS COMUNS                                                │
+└────────────────────────────────────────────────────────────────────┘
+
+❌ "Build failed"
+   → Verifique requirements.txt
+   → Certifique-se que monitor_multi_sites.py está no repo
+
+❌ "Application timeout" 
+   → Normal na primeira coleta (demora 1-2 min)
+   → Aguarde e recarregue
+
+❌ Página mostra "Carregando..."
+   → Primeira coleta em andamento
+   → Aguarde 2 minutos e recarregue
+
+❌ App hiberna sempre
+   → Configure UptimeRobot (veja acima)
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 💰 CUSTOS                                                          │
+└────────────────────────────────────────────────────────────────────┘
+
+Render Free Tier:
+✅ 750 horas/mês de uptime
+✅ 512MB RAM
+✅ 100GB bandwidth/mês
+✅ Deploy automático
+⚠️ Hiberna após 15min inatividade (resolve com UptimeRobot)
+
+💵 Custo total: R$ 0,00 (100% GRATUITO!)
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🎓 PRÓXIMOS PASSOS                                                │
+└────────────────────────────────────────────────────────────────────┘
+
+□ Compartilhe a URL com amigos
+□ Adicione mais fontes de notícias
+□ Customize o CSS do relatório
+□ Crie integrações via API REST
+□ Configure webhook Telegram/Discord
+
+╔════════════════════════════════════════════════════════════════════╗
+║                    ✅ SETUP COMPLETO!                              ║
+║      Seu monitor de notícias está no ar 24/7 gratuitamente!       ║
+╚════════════════════════════════════════════════════════════════════╝
