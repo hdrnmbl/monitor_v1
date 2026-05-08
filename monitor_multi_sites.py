@@ -1402,24 +1402,6 @@ class GeradorRelatorioHTML:
 class MonitorMultiSites:
     """Classe principal que coordena monitoramento de múltiplos sites"""
 
-    for noticia in resultados['noticias']:
-    # 1. Calcula a importância
-    pontuacao = self.analisador.calcular_pontuacao(noticia)
-    noticia['pontuacao'] = pontuacao
-    
-    # 2. Verifica se é importante (Nota mínima definida na ConfiguracaoGeral)
-    if self.analisador.eh_importante(noticia):
-        importantes.append(noticia)
-        
-        # --- AQUI ENTRA O TELEGRAM ---
-        # Chamamos a função de alerta apenas para as importantes
-        enviar_alerta_telegram(
-            titulo=noticia['titulo'],
-            link=noticia['url']
-        )
-        # -----------------------------
-
-        
     def __init__(self, diretorio_dados: str = "dados_noticias"):
         self.diretorio = Path(diretorio_dados)
         self.diretorio.mkdir(exist_ok=True)
@@ -1439,7 +1421,7 @@ class MonitorMultiSites:
         # Componente compartilhado
         self.analisador = AnalisadorImportancia()
         self.gerador_html = GeradorRelatorioHTML(self.analisador)
-    
+
     def executar(self) -> None:
         """Executa coleta em todos os sites com tratamento de erros"""
         dados_por_site = {}
@@ -1466,6 +1448,22 @@ class MonitorMultiSites:
                 stats = resultado['estatisticas']
                 
                 if noticias:
+                    # --- NOVO: PROCESSAMENTO E ALERTA TELEGRAM ---
+                    importantes = []
+                    for n in noticias:
+                        # 1. Calcula pontuação individual
+                        n['pontuacao'] = self.analisador.calcular_pontuacao(n)
+                        
+                        # 2. Se for importante, salva e envia alerta
+                        if self.analisador.eh_importante(n):
+                            importantes.append(n)
+                            # Envia o alerta em tempo real
+                            enviar_alerta_telegram(
+                                titulo=n['titulo'],
+                                link=n['url']
+                            )
+                    # --------------------------------------------
+
                     historico.adicionar_noticias(noticias)
                     historico.salvar()
                     
@@ -1478,12 +1476,8 @@ class MonitorMultiSites:
                     
                     self.logger.info(f"✓ JSON salvo: {arquivo_json}")
                     self.logger.info(f"📊 Estatísticas: {stats['total_coletadas']} notícias em {stats['tempo_total']:.1f}s")
-                    if stats['erros'] > 0:
-                        self.logger.warning(f"⚠️ {stats['erros']} categoria(s) com erro")
-                    self.logger.info("")
                     
-                    # Prepara dados para HTML
-                    importantes = [n for n in noticias if self.analisador.eh_importante(n)]
+                    # Prepara dados para o relatório HTML
                     top5 = self.analisador.obter_top5(noticias)
                     
                     dados_por_site[config_site.slug] = {
@@ -1503,30 +1497,20 @@ class MonitorMultiSites:
             except Exception as e:
                 self.logger.error(f"❌ Erro crítico ao processar {config_site.nome}: {str(e)[:150]}")
                 estatisticas_globais['sites_falha'] += 1
-                continue  # Continua com próximo site
-        
-        # Gera HTML se houver dados
+                continue 
+
+        # Gera HTML final se houver dados
         if dados_por_site:
             hoje = datetime.now().strftime('%Y-%m-%d')
             arquivo_html = self.diretorio / f"relatorio_multi_{hoje}.html"
             self.gerador_html.gerar_multi_sites(dados_por_site, hoje, arquivo_html)
             
-            # Estatísticas finais
+            # Resumo final no log
             tempo_total = time.time() - estatisticas_globais['tempo_inicio']
             self.logger.info("="*70)
-            self.logger.info("📊 RESUMO DA COLETA")
-            self.logger.info("="*70)
-            self.logger.info(f"✅ Sites com sucesso: {estatisticas_globais['sites_sucesso']}")
-            if estatisticas_globais['sites_falha'] > 0:
-                self.logger.warning(f"❌ Sites com falha: {estatisticas_globais['sites_falha']}")
-            self.logger.info(f"📰 Total de notícias: {estatisticas_globais['total_noticias']}")
-            self.logger.info(f"⭐ Notícias importantes: {estatisticas_globais['total_importantes']}")
+            self.logger.info(f"📰 Total: {estatisticas_globais['total_noticias']} | ⭐ Importantes: {estatisticas_globais['total_importantes']}")
             self.logger.info(f"⏱️ Tempo total: {tempo_total:.1f}s")
-            self.logger.info(f"📁 Relatório: {arquivo_html}")
             self.logger.info("="*70)
-        else:
-            self.logger.error("❌ Nenhum site coletou notícias com sucesso")
-            self.logger.error("💡 Verifique sua conexão ou os logs acima para detalhes")
 
 
 def main():
