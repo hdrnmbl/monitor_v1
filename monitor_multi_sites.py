@@ -29,7 +29,7 @@ from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
 
 
-def enviar_alerta_telegram_consolidado(texto):
+def enviar_alerta_telegram(texto):
     """Envia o boletim formatado para o Telegram"""
     # No Render, você configura essas chaves nas 'Environment Variables'
     token = os.getenv("TELEGRAM_TOKEN")
@@ -1500,7 +1500,7 @@ class MonitorMultiSites:
         texto += f"📊 _Encontradas {len(importantes)} notícias relevantes._"
 
         # Chama a sua função de envio
-        enviar_alerta_telegram_consolidado(texto)
+        enviar_alerta_telegram(texto)
 
 def main():
     """Função principal de execução"""
