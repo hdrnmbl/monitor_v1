@@ -26,29 +26,32 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from abc import ABC, abstractmethod
-
-import requests
 from bs4 import BeautifulSoup
 
 
-def enviar_alerta_telegram(titulo, link, resumo=""):
-    token = os.environ.get('TELEGRAM_TOKEN')
-    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+def enviar_alerta_telegram_consolidado(texto):
+    """Envia o boletim formatado para o Telegram"""
+    # No Render, você configura essas chaves nas 'Environment Variables'
+    token = os.getenv("TELEGRAM_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
     if not token or not chat_id:
-        return # Se não configurou as variáveis, não faz nada
+        print("⚠️ Configuração do Telegram ausente (TOKEN ou CHAT_ID)")
+        return
 
-    mensagem = (
-        f"🚨 <b>NOTÍCIA IMPORTANTE</b>\n\n"
-        f"📌 {titulo}\n\n"
-        f"🔗 <a href='{link}'>Leia mais aqui</a>"
-    )
-    
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": texto,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": False
+    }
+    
     try:
-        requests.post(url, json={"chat_id": chat_id, "text": mensagem, "parse_mode": "HTML"}, timeout=10)
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
     except Exception as e:
-        print(f"Erro ao enviar Telegram: {e}")
+        print(f"❌ Erro ao enviar para o Telegram: {e}")
 
 
 
@@ -1405,26 +1408,20 @@ class MonitorMultiSites:
     def __init__(self, diretorio_dados: str = "dados_noticias"):
         self.diretorio = Path(diretorio_dados)
         self.diretorio.mkdir(exist_ok=True)
-        
-        # Configura logging
         self.logger = configurar_logging()
-        self.logger.info("="*70)
-        self.logger.info("🚀 Monitor de Notícias Multi-Sites Iniciado")
-        self.logger.info("="*70)
-        
-        # Configurações dos sites
         self.sites = [
             ConfiguracaoMetropoles(),
             ConfiguracaoCorreioBraziliense(),
         ]
-        
-        # Componente compartilhado
         self.analisador = AnalisadorImportancia()
         self.gerador_html = GeradorRelatorioHTML(self.analisador)
 
     def executar(self) -> None:
-        """Executa coleta em todos os sites com tratamento de erros"""
+        """Executa coleta em todos os sites e envia UM resumo ao final"""
         dados_por_site = {}
+        # --- 1. CRIAMOS A LISTA GLOBAL AQUI ---
+        todas_importantes_do_ciclo = []
+        
         estatisticas_globais = {
             'total_noticias': 0,
             'total_importantes': 0,
@@ -1435,83 +1432,75 @@ class MonitorMultiSites:
         
         for config_site in self.sites:
             try:
-                # Histórico separado por site
                 arquivo_historico = self.diretorio / f"historico_{config_site.slug}.json"
                 historico = GerenciadorHistorico(arquivo_historico)
-                
-                # Coletor específico do site
                 coletor = ColetorNoticias(config_site, historico, self.analisador, self.logger)
                 
-                # Coleta
                 resultado = coletor.coletar_todas()
                 noticias = resultado['noticias']
-                stats = resultado['estatisticas']
                 
                 if noticias:
-                    # --- NOVO: PROCESSAMENTO E ALERTA TELEGRAM ---
-                    importantes = []
+                    importantes_do_site = []
                     for n in noticias:
-                        # 1. Calcula pontuação individual
                         n['pontuacao'] = self.analisador.calcular_pontuacao(n)
                         
-                        # 2. Se for importante, salva e envia alerta
                         if self.analisador.eh_importante(n):
-                            importantes.append(n)
-                            # Envia o alerta em tempo real
-                            enviar_alerta_telegram(
-                                titulo=n['titulo'],
-                                link=n['url']
-                            )
-                    # --------------------------------------------
+                            importantes_do_site.append(n)
+                            # --- 2. APENAS ADICIONAMOS NA LISTA (SEM ENVIAR AQUI) ---
+                            todas_importantes_do_ciclo.append(n)
 
+                    # Restante do processamento de histórico e JSON (continua igual)
                     historico.adicionar_noticias(noticias)
                     historico.salvar()
                     
-                    # Salva JSON individual do site
                     hoje = datetime.now().strftime('%Y-%m-%d')
                     arquivo_json = self.diretorio / f"noticias_{config_site.slug}_{hoje}.json"
-                    
                     with open(arquivo_json, 'w', encoding='utf-8') as f:
                         json.dump(noticias, f, ensure_ascii=False, indent=2)
-                    
-                    self.logger.info(f"✓ JSON salvo: {arquivo_json}")
-                    self.logger.info(f"📊 Estatísticas: {stats['total_coletadas']} notícias em {stats['tempo_total']:.1f}s")
-                    
-                    # Prepara dados para o relatório HTML
-                    top5 = self.analisador.obter_top5(noticias)
                     
                     dados_por_site[config_site.slug] = {
                         'nome': config_site.nome,
                         'noticias': noticias,
-                        'importantes': importantes,
-                        'top5': top5
+                        'importantes': importantes_do_site,
+                        'top5': self.analisador.obter_top5(noticias)
                     }
                     
                     estatisticas_globais['total_noticias'] += len(noticias)
-                    estatisticas_globais['total_importantes'] += len(importantes)
+                    estatisticas_globais['total_importantes'] += len(importantes_do_site)
                     estatisticas_globais['sites_sucesso'] += 1
-                else:
-                    self.logger.warning(f"⚠️ Nenhuma notícia coletada de {config_site.nome}")
-                    estatisticas_globais['sites_falha'] += 1
-                    
+                
             except Exception as e:
-                self.logger.error(f"❌ Erro crítico ao processar {config_site.nome}: {str(e)[:150]}")
-                estatisticas_globais['sites_falha'] += 1
+                self.logger.error(f"❌ Erro em {config_site.nome}: {e}")
                 continue 
 
-        # Gera HTML final se houver dados
+        # --- 3. O ENVIO DO TELEGRAM AGORA FICA AQUI (FORA DO LOOP DOS SITES) ---
+        if todas_importantes_do_ciclo:
+            self.enviar_resumo_telegram(todas_importantes_do_ciclo)
+
+        # Gera o HTML final
         if dados_por_site:
             hoje = datetime.now().strftime('%Y-%m-%d')
             arquivo_html = self.diretorio / f"relatorio_multi_{hoje}.html"
             self.gerador_html.gerar_multi_sites(dados_por_site, hoje, arquivo_html)
-            
-            # Resumo final no log
-            tempo_total = time.time() - estatisticas_globais['tempo_inicio']
-            self.logger.info("="*70)
-            self.logger.info(f"📰 Total: {estatisticas_globais['total_noticias']} | ⭐ Importantes: {estatisticas_globais['total_importantes']}")
-            self.logger.info(f"⏱️ Tempo total: {tempo_total:.1f}s")
-            self.logger.info("="*70)
 
+    # --- 4. NOVO MÉTODO PARA MONTAR E ENVIAR A MENSAGEM ÚNICA ---
+    def enviar_resumo_telegram(self, importantes):
+        """Formata e envia um boletim único com todas as notícias do ciclo"""
+        hoje = datetime.now().strftime('%d/%m/%Y %H:%M')
+        
+        texto = f"🔔 *BOLETIM DE NOTÍCIAS IMPORTANTES*\n"
+        texto += f"📅 _Varredura: {hoje}_\n"
+        texto += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for i, noticia in enumerate(importantes, 1):
+            texto += f"{i}️⃣ *{noticia['titulo']}*\n"
+            texto += f"🔗 [Ler na íntegra]({noticia['url']})\n\n"
+        
+        texto += f"━━━━━━━━━━━━━━━━━━━━\n"
+        texto += f"📊 _Encontradas {len(importantes)} notícias relevantes._"
+
+        # Chama a sua função de envio
+        enviar_alerta_telegram_consolidado(texto)
 
 def main():
     """Função principal de execução"""
