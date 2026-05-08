@@ -20,6 +20,8 @@ Data: 2026
 import json
 import time
 import logging
+import os
+import requests
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
@@ -27,6 +29,27 @@ from abc import ABC, abstractmethod
 
 import requests
 from bs4 import BeautifulSoup
+
+
+def enviar_alerta_telegram(titulo, link, resumo=""):
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+    
+    if not token or not chat_id:
+        return # Se não configurou as variáveis, não faz nada
+
+    mensagem = (
+        f"🚨 <b>NOTÍCIA IMPORTANTE</b>\n\n"
+        f"📌 {titulo}\n\n"
+        f"🔗 <a href='{link}'>Leia mais aqui</a>"
+    )
+    
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        requests.post(url, json={"chat_id": chat_id, "text": mensagem, "parse_mode": "HTML"}, timeout=10)
+    except Exception as e:
+        print(f"Erro ao enviar Telegram: {e}")
+
 
 
 def configurar_logging(diretorio_logs: str = "logs") -> logging.Logger:
@@ -1378,7 +1401,25 @@ class GeradorRelatorioHTML:
 
 class MonitorMultiSites:
     """Classe principal que coordena monitoramento de múltiplos sites"""
+
+    for noticia in resultados['noticias']:
+    # 1. Calcula a importância
+    pontuacao = self.analisador.calcular_pontuacao(noticia)
+    noticia['pontuacao'] = pontuacao
     
+    # 2. Verifica se é importante (Nota mínima definida na ConfiguracaoGeral)
+    if self.analisador.eh_importante(noticia):
+        importantes.append(noticia)
+        
+        # --- AQUI ENTRA O TELEGRAM ---
+        # Chamamos a função de alerta apenas para as importantes
+        enviar_alerta_telegram(
+            titulo=noticia['titulo'],
+            link=noticia['url']
+        )
+        # -----------------------------
+
+        
     def __init__(self, diretorio_dados: str = "dados_noticias"):
         self.diretorio = Path(diretorio_dados)
         self.diretorio.mkdir(exist_ok=True)
