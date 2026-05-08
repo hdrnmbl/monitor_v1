@@ -151,17 +151,16 @@ def health():
     return jsonify({'status': 'healthy'}), 200
 
 
+# Esta função vai rodar assim que o servidor ligar, independente do Gunicorn
+def inicializar_bot():
+    print("🚀 Servidor iniciado. Disparando thread de coleta...")
+    thread = threading.Thread(target=executar_coleta, daemon=True)
+    thread.start()
+
+# Chamamos a função diretamente no corpo do arquivo
+inicializar_bot()
+
+# O Gunicorn usa apenas a variável 'app', ele não executa o app.run()
 if __name__ == '__main__':
-    # Inicia thread de coleta em background
-    thread_coleta = threading.Thread(target=executar_coleta, daemon=True)
-    thread_coleta.start()
-    
-    # Primeira coleta imediata
-    print("🚀 Executando primeira coleta...")
-    monitor = MonitorMultiSites()
-    monitor.executar()
-    ultima_atualizacao = datetime.now()
-    
-    # Inicia servidor
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
