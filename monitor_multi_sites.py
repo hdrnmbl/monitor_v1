@@ -362,54 +362,53 @@ class ColetorNoticias:
         
         self.logger.error(f"   ✗ Falhou após {max_tentativas} tentativas")
         return []
+
     
-    def _encontrar_elementos_noticias(self, soup: BeautifulSoup) -> List:
-        """Encontra elementos HTML que contêm notícias"""
+def _encontrar_elementos_noticias(self, soup: BeautifulSoup) -> List:
+        """Encontra elementos HTML que contêm notícias - Versão Otimizada Correio"""
         elementos = []
         
-        # Estratégia 1: Tags article
+        # Estratégia 1: Tags article (Padrão para a maioria dos sites)
         articles = soup.find_all('article', limit=self.config_site.limite_artigos)
         elementos.extend(articles)
         
-        # Estratégia 2: Containers específicos do Correio (procura DENTRO deles)
+        # Estratégia 2: Containers específicos do Correio (Melhorada para pegar o histórico/feed)
         if self.config_site.slug == 'correio':
-            # Containers do Correio que agrupam notícias
-            containers = soup.find_all('div', class_=lambda x: x and any(
-                k in str(x).lower() for k in ['hardnews', 'items', 'lista', 'feed']
+            # O Correio usa classes como 'wrapper-feed' e 'timeline' para as notícias antigas
+            containers_extras = soup.find_all(['div', 'section'], class_=lambda x: x and any(
+                k in str(x).lower() for k in ['hardnews', 'items', 'lista', 'feed', 'wrapper-feed', 'timeline']
             ))
             
-            # Dentro de cada container, pega os articles
-            for container in containers:
-                articles_dentro = container.find_all('article')
-                elementos.extend(articles_dentro)
-                
-                # Se não tem articles, pega divs que parecem notícia
-                if not articles_dentro:
-                    divs_dentro = container.find_all('div', recursive=False)
-                    for div in divs_dentro:
-                        # Só adiciona se tem link
-                        if div.find('a', href=True):
-                            elementos.append(div)
-        
-        # Estratégia 3: Divs com classes específicas de notícia
-        if len(elementos) < 15:
-            divs = soup.find_all('div', class_=lambda x: x and any(
-                k in str(x).lower() for k in ['post', 'card', 'materia', 'noticia', 'news-item']
+            for container in containers_extras:
+                # Busca articles ou divs que agem como itens de lista
+                itens = container.find_all(['article', 'div'], class_=lambda x: x and any(
+                    k in str(x).lower() for k in ['item', 'post', 'materia']
+                ))
+                elementos.extend(itens)
+
+        # Estratégia 3: Fallback - Se ainda tiver poucos elementos, busca por padrões de classes comuns
+        if len(elementos) < 10:
+            divs_genericas = soup.find_all('div', class_=lambda x: x and any(
+                k in str(x).lower() for k in ['post', 'card', 'materia', 'noticia', 'news-item', 'chamada']
             ))
-            for div in divs:
-                if div.find('a', href=True):  # Só se tiver link
+            for div in divs_genericas:
+                if div.find('a', href=True):
                     elementos.append(div)
         
         # Remove duplicatas mantendo ordem
         elementos_unicos = []
-        seen = set()
+        seen_links = set()
         for elem in elementos:
-            elem_id = id(elem)
-            if elem_id not in seen:
-                seen.add(elem_id)
+            # Tenta pegar o link para usar como critério de duplicata real
+            link = elem.find('a', href=True)
+            url = link['href'] if link else str(id(elem))
+            
+            if url not in seen_links:
+                seen_links.add(url)
                 elementos_unicos.append(elem)
         
         return elementos_unicos[:self.config_site.limite_artigos]
+    
     
     def _extrair_noticias(self, elementos: List, categoria: str) -> List[Dict]:
         """Extrai informações das notícias dos elementos HTML"""
