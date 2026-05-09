@@ -22,6 +22,7 @@ import time
 import logging
 import os
 import requests
+import random
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
@@ -237,6 +238,23 @@ class ColetorNoticias:
         self.analisador = analisador
         self.logger = logger or logging.getLogger('MonitorNoticias')
     
+    # --- NOVO MÉTODO PARA CONTROLE DE TEMPO ---
+    def _aplicar_pausa_inteligente(self, indice_requisicao: int):
+        """Aplica Distribuição Normal (3-6s) e Jitter de lote (Pausa do Café)"""
+        # Curva Normal: média 4.5s, desvio 0.5s -> Maioria entre 3 e 6 segundos
+        pausa = random.gauss(4.5, 0.5)
+        pausa = max(3.0, min(6.0, pausa))
+        
+        # Jitter: A cada 10 requisições, faz uma pausa longa (Pausa do Café)
+        if indice_requisicao > 0 and indice_requisicao % 10 == 0:
+            tempo_cafe = random.uniform(15.0, 30.0)
+            self.logger.info(f"☕ Pausa para o café (Jitter): {tempo_cafe:.2f}s para evitar bloqueio...")
+            time.sleep(tempo_cafe)
+        
+        self.logger.info(f"💤 Aguardando {pausa:.2f}s (ritmo orgânico)...")
+        time.sleep(pausa)
+        
+        
     def coletar_todas(self) -> Dict:
         """Coleta notícias de todas as URLs configuradas e retorna estatísticas"""
         self.logger.info("="*70)
@@ -251,8 +269,14 @@ class ColetorNoticias:
             'erros': 0,
             'tempo_inicio': time.time()
         }
+
         
-        for categoria, url in self.config_site.urls_monitoradas.items():
+        # Convertemos para lista para poder usar o índice no enumerate
+        urls_para_coletar = list(self.config_site.urls_monitoradas.items())
+        total = len(urls_para_coletar)
+
+        
+        for i, (categoria, url) in enumerate(urls_para_coletar):
             self.logger.info(f"🔍 Coletando: {categoria.upper()}...")
             
             try:
@@ -278,8 +302,9 @@ class ColetorNoticias:
                     self.logger.info(f"   ✓ {len(noticias)} notícias novas")
                     estatisticas['por_categoria'][categoria] = len(noticias)
                 
-                time.sleep(self.config_geral.INTERVALO_ENTRE_REQUISICOES)
-                
+                if i < total - 1:
+                    self._aplicar_pausa_inteligente(i + 1)
+                                
             except Exception as e:
                 self.logger.error(f"   ✗ Erro ao coletar {categoria}: {str(e)[:100]}")
                 estatisticas['erros'] += 1
