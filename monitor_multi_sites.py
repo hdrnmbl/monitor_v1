@@ -364,7 +364,7 @@ class ColetorNoticias:
         return []
 
     
-def _encontrar_elementos_noticias(self, soup: BeautifulSoup) -> List:
+    def _encontrar_elementos_noticias(self, soup: BeautifulSoup) -> List:
         """Encontra elementos HTML que contêm notícias - Versão Otimizada Correio"""
         elementos = []
         
